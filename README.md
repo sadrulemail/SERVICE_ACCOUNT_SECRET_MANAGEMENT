@@ -1,4 +1,3 @@
-Of course, here is an infographic for the Snowflake Streamlit app.
 
 ## Snowflake Streamlit App: Service Account Secret Management
 
