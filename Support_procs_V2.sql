@@ -1,4 +1,72 @@
 
+create or replace database UTILS_DB;
+create or replace schema ACCOUNTADMIN_UTILS;
+create or replace schema EVENTS;
+
+CREATE EVENT TABLE event_logs;
+
+ALTER ACCOUNT SET EVENT_TABLE = UTILS_DB.EVENTS.event_logs;
+
+SHOW PARAMETERS LIKE 'event_table' IN ACCOUNT;
+
+ALTER DATABASE UTILS_DB SET LOG_LEVEL = INFO;
+
+CREATE OR REPLACE PROCEDURE UTILS_DB.EVENTS.LOG_TASKEVENT_PROC(
+    "IN_PROC_NAME" VARCHAR,
+    "IN_PROC_VERSION" VARCHAR DEFAULT '1.0',
+    "IN_LOG_TYPE" VARCHAR DEFAULT 'LOG',
+    "IN_STEP_NAME" VARCHAR DEFAULT 'UN-NAMED',
+    "IN_STEP_VERSION" VARCHAR DEFAULT '1.0',
+    "IN_SECURITY_PROFILE" VARCHAR DEFAULT 'OPEN',
+    "IN_COMMENTS" VARCHAR DEFAULT 'not set',
+    "IN_APPLICATION" VARCHAR DEFAULT '{"missing":"missing"}'
+)
+RETURNS VARIANT
+LANGUAGE SQL
+EXECUTE AS OWNER
+AS '
+DECLARE
+    log_core VARIANT;
+    return_value VARIANT;
+BEGIN
+    -- Construct core logging object with all parameters
+    log_core := OBJECT_CONSTRUCT(
+        ''procedure_name'', UPPER(:IN_PROC_NAME),
+        ''procedure_version'', :IN_PROC_VERSION,
+        ''log_type'', UPPER(:IN_LOG_TYPE),
+        ''timestamp'', CURRENT_TIMESTAMP(),
+        ''snowflake_account'', CURRENT_ACCOUNT(),
+        ''environment'', UTILS_DB.UTILS.GET_ENV_NAME(),
+        ''step_name'', UPPER(:IN_STEP_NAME),
+        ''step_version'', :IN_STEP_VERSION,
+        ''security_profile'', UPPER(:IN_SECURITY_PROFILE),
+        ''comments'', :IN_COMMENTS,
+        ''application'', PARSE_JSON(:IN_APPLICATION)
+    );
+    
+    -- Log to Snowflake system
+    SYSTEM$LOG_INFO(:log_core);
+    
+    -- Return the constructed log object
+    return_value := :log_core;
+    
+    RETURN :return_value;
+    
+EXCEPTION
+    WHEN OTHER THEN
+        -- Return detailed error information
+        RETURN OBJECT_CONSTRUCT(
+            ''error_type'', ''LOG_TASKEVENT_PROC_ERROR'',
+            ''sqlcode'', SQLCODE,
+            ''sqlerrm'', SQLERRM,
+            ''sqlstate'', SQLSTATE,
+            ''parameters'', OBJECT_CONSTRUCT(
+                ''procedure_name'', :IN_PROC_NAME,
+                ''step_name'', :IN_STEP_NAME
+            )
+        );
+END;
+';
   -- Validation Procedure: VALIDATE_SERVICE_ACCOUNT_INPUT_PARAMETERS_PROC
 
 CREATE OR REPLACE PROCEDURE UTILS_DB.ACCOUNTADMIN_UTILS.VALIDATE_SERVICE_ACCOUNT_INPUT_PARAMETERS_PROC(
